@@ -8,7 +8,7 @@
     :copyright: (c) 2016 by Kenneth Reitz.
     :license: MIT, see LICENSE for more details.
 """
-
+import xlsxwriter
 from copy import copy
 from operator import itemgetter
 
@@ -452,7 +452,77 @@ class Dataset(object):
         import_set(self, in_stream, **kwargs)
         return self
 
+    def create_xls(self, filename):
+        if not filename:
+            raise MissedXlsFilename('Missed filename')
+        self._wb = xlsxwriter.Workbook('{}.xlsx'.format(filename))
+        self._ws = self._wb.add_worksheet()
+        for row_num, columns in enumerate(self._package(dicts=False)):
+            for col_num, cell_data in enumerate(columns):
+                self._ws.write(row_num, col_num, cell_data)
 
+    def _set_format(self, bg_color, font, font_size, font_color, border, bold, italic, aligment):
+        cell_format = self._wb.add_format()
+        if bg_color:
+            cell_format.set_bg_color(bg_color)
+        if font:
+            cell_format.set_font_name(font)
+        if font_color:
+            cell_format.set_font_color(font_color)
+        if font_size:
+            cell_format.set_font_size(font_size)
+        if bold:
+            cell_format.set_bold()
+        if italic:
+            cell_format.set_italic()
+        if aligment:
+            cell_format.set_align(aligment)
+        if border:
+            cell_format.set_border(border)
+        return cell_format
+
+    def format_column(self, column, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        try:
+            column_position = self.headers.index(column)
+        except ValueError:
+            raise ColumnDoesNotExist()
+        column_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
+        for row, data, in enumerate(self._package(), 1):
+            self._ws.write(row, column_position, data[column], column_format)
+
+    def format_header(self, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        header_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
+        for col_num, cell_data in enumerate(self.headers):
+            self._ws.write(0, col_num, cell_data, header_format)
+
+    def format_footer(self, columns, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        footer_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
+        try:
+            for column, cell_data in columns.iteritems():
+                self._ws.write(len(self._package(dicts=False)), self.headers.index(column), cell_data, footer_format)
+        except ValueError:
+            raise ColumnDoesNotExist('Column {} does not exist'.format(column))
+
+
+    def add_dropdown(self, column, source):
+        try:
+            column_position = self.headers.index(column)
+        except ValueError:
+            raise ColumnDoesNotExist()
+        self._ws.data_validation(
+            first_row=1,
+            first_col=column_position,
+            last_row=len(self._package(dicts=False))-1,
+            last_col=column_position,
+            options={'validate': 'list', 'source': map(str, source)}
+        )
+
+    def save_xls(self):
+        self._wb.close()
+        return 'path/to/file'
 
     def export(self, format, **kwargs):
         """
@@ -1186,3 +1256,10 @@ class HeadersNeeded(Exception):
 
 class UnsupportedFormat(NotImplementedError):
     "Format is not supported"
+
+
+class MissedXlsFilename(NotImplementedError):
+    'Filename for xls is missed'
+
+class ColumnDoesNotExist(NotImplementedError):
+    'Column does not exist'
