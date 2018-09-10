@@ -8,7 +8,6 @@
     :copyright: (c) 2016 by Kenneth Reitz.
     :license: MIT, see LICENSE for more details.
 """
-import xlsxwriter
 from copy import copy
 from operator import itemgetter
 
@@ -159,6 +158,9 @@ class Dataset(object):
     def __init__(self, *args, **kwargs):
         self._data = list(Row(arg) for arg in args)
         self.__headers = None
+        self._cell_formats = {}
+        self.__footer = None
+        self.__footer_format = None
 
         # ('title', index) tuples
         self._separators = []
@@ -287,7 +289,7 @@ class Dataset(object):
             return False
 
 
-    def _package(self, dicts=True, ordered=True):
+    def _package(self, dicts=True, ordered=True, formats=False):
         """Packages Dataset into lists of dictionaries for transmission."""
         # TODO: Dicts default to false?
 
@@ -311,7 +313,6 @@ class Dataset(object):
                     except IndexError:
                         raise InvalidDatasetIndex
 
-
         if self.headers:
             if dicts:
                 data = [dict_pack(list(zip(self.headers, data_row))) for data_row in _data]
@@ -320,9 +321,33 @@ class Dataset(object):
         else:
             data = [list(row) for row in _data]
 
+        footer = self.__footer
+        if footer:
+            if not dicts:
+                footer = [footer.get(key, '') for key in self.headers]
+            data = data + [footer]
+
+        if formats:
+            for row_i, row in enumerate(data):
+                for col_i, datum in enumerate(row):
+                    data[row_i][col_i] = (
+                        datum,
+                        self._get_cell_format(row_i, col_i))
+
         return data
 
-
+    def _get_cell_format(self, row, column):
+        if row and row >= self.height + 1:
+            return self.__footer_format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_row == row and format_column == column:
+                return format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_column is None and format_row == row:
+                return format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_row is None and format_column == column:
+                return format
 
     def _get_headers(self):
         """An *optional* list of strings to be used for header rows and attribute names.
@@ -434,6 +459,10 @@ class Dataset(object):
             except TypeError:
                 return 0
 
+    @property
+    def formats(self):
+        footer_formats = filter(bool, [self.__footer_format])
+        return self._cell_formats.values() + footer_formats
 
     def load(self, in_stream, format=None, **kwargs):
         """
@@ -452,59 +481,37 @@ class Dataset(object):
         import_set(self, in_stream, **kwargs)
         return self
 
-    def create_xls(self, filename):
-        if not filename:
-            raise MissedXlsFilename('Missed filename')
-        self._wb = xlsxwriter.Workbook('{}.xlsx'.format(filename))
-        self._ws = self._wb.add_worksheet()
-        for row_num, columns in enumerate(self._package(dicts=False)):
-            for col_num, cell_data in enumerate(columns):
-                self._ws.write(row_num, col_num, cell_data)
+    def _make_format(self, bg_color, font, font_size, font_color, border, bold, italic, aligment):
+        return {
+            'bg_color': bg_color,
+            'font': font,
+            'font_size': font_size,
+            'font_color': font_color,
+            'border': border,
+            'bold': bold,
+            'italic': italic,
+            'aligment': aligment,
+        }
 
-    def _set_format(self, bg_color, font, font_size, font_color, border, bold, italic, aligment):
-        cell_format = self._wb.add_format()
-        if bg_color:
-            cell_format.set_bg_color(bg_color)
-        if font:
-            cell_format.set_font_name(font)
-        if font_color:
-            cell_format.set_font_color(font_color)
-        if font_size:
-            cell_format.set_font_size(font_size)
-        if bold:
-            cell_format.set_bold()
-        if italic:
-            cell_format.set_italic()
-        if aligment:
-            cell_format.set_align(aligment)
-        if border:
-            cell_format.set_border(border)
-        return cell_format
+    def _set_format(self, col, row, *args, **kwargs):
+        self._cell_formats[col, row] = self._make_format(*args, **kwargs)
 
-    def format_column(self, column, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+    def format_col(self, column, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
                    italic=False, aligment=None):
         try:
             column_position = self.headers.index(column)
         except ValueError:
             raise ColumnDoesNotExist()
-        column_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
-        for row, data, in enumerate(self._package(), 1):
-            self._ws.write(row, column_position, data[column], column_format)
+        self._set_format(column_position, None, bg_color, font, font_size, font_color, border, bold, italic, aligment)
 
     def format_header(self, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
                    italic=False, aligment=None):
-        header_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
-        for col_num, cell_data in enumerate(self.headers):
-            self._ws.write(0, col_num, cell_data, header_format)
+        self._set_format(None, 0, bg_color, font, font_size, font_color, border, bold, italic, aligment)
 
     def format_footer(self, columns, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
                    italic=False, aligment=None):
-        footer_format = self._set_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
-        try:
-            for column, cell_data in columns.iteritems():
-                self._ws.write(len(self._package(dicts=False)), self.headers.index(column), cell_data, footer_format)
-        except ValueError:
-            raise ColumnDoesNotExist('Column {} does not exist'.format(column))
+        self.__footer = columns
+        self.__footer_format = self._make_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
 
 
     def add_dropdown(self, column, source):
