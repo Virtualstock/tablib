@@ -161,6 +161,7 @@ class Dataset(object):
         self._cell_formats = {}
         self.__footer = None
         self.__footer_format = None
+        self.dropdowns = []
 
         # ('title', index) tuples
         self._separators = []
@@ -333,7 +334,6 @@ class Dataset(object):
                     data[row_i][col_i] = (
                         datum,
                         self._get_cell_format(row_i, col_i))
-
         return data
 
     def _get_cell_format(self, row, column):
@@ -493,8 +493,21 @@ class Dataset(object):
             'aligment': aligment,
         }
 
+    def _make_validation(self, first_row, first_col, last_row, last_col, options):
+        return {
+            'first_row': first_row,
+            'first_col': first_col,
+            'last_row': last_row,
+            'last_col': last_col,
+            'options': options
+        }
+
+
     def _set_format(self, col, row, *args, **kwargs):
         self._cell_formats[col, row] = self._make_format(*args, **kwargs)
+
+    def _set_dropdown(self, column, *args, **kwargs):
+        self.dropdowns.append(self._make_validation(*args, **kwargs))
 
     def format_col(self, column, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
                    italic=False, aligment=None):
@@ -519,17 +532,9 @@ class Dataset(object):
             column_position = self.headers.index(column)
         except ValueError:
             raise ColumnDoesNotExist()
-        self._ws.data_validation(
-            first_row=1,
-            first_col=column_position,
-            last_row=len(self._package(dicts=False))-1,
-            last_col=column_position,
-            options={'validate': 'list', 'source': map(str, source)}
-        )
+        self._set_dropdown(column, 1, column_position, len(self._package(dicts=False)),
+                           column_position, {'validate': 'list', 'source': map(str, source)})
 
-    def save_xls(self):
-        self._wb.close()
-        return 'path/to/file'
 
     def export(self, format, **kwargs):
         """

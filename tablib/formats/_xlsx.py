@@ -5,6 +5,7 @@
 
 import sys
 
+import openpyxl
 
 if sys.version_info[0] > 2:
     from io import BytesIO
@@ -16,9 +17,9 @@ import xlsxwriter
 import tablib
 
 # TODO: fix these:
-# Workbook = openpyxl.workbook.Workbook
-# ExcelWriter = openpyxl.writer.excel.ExcelWriter
-# get_column_letter = openpyxl.utils.get_column_letter
+Workbook = openpyxl.workbook.Workbook
+ExcelWriter = openpyxl.writer.excel.ExcelWriter
+get_column_letter = openpyxl.utils.get_column_letter
 
 from tablib.compat import unicode
 
@@ -38,14 +39,14 @@ def detect(stream):
 
 def export_set(dataset, freeze_panes=True):
     """Returns XLSX representation of Dataset."""
-
+    import pdb;
+    pdb.set_trace()
     wb, temp_file, cell_formats = _new_workbook([dataset])
     # TODO: adapt this openpyxl code to xlsxwriter:
     ws = wb.add_worksheet()
     ws.title = dataset.title if dataset.title else 'Tablib Dataset'
 
-    dset_sheet(dataset, ws, cell_formats, freeze_panes=freeze_panes)
-
+    dset_sheet(dataset, ws, cell_formats)
     wb.close()
 
     stream = BytesIO()
@@ -95,14 +96,12 @@ def _new_workbook(datasets):
 
 def export_book(databook, freeze_panes=True):
     """Returns XLSX representation of DataBook."""
-
     wb, temp_file, cell_formats = _new_workbook(databook)
     for i, dset in enumerate(databook._datasets):
         ws = wb.create_sheet()
         ws.title = dset.title if dset.title else 'Sheet%s' % (i)
 
-        dset_sheet(dset, ws, cell_formats, freeze_panes=freeze_panes)
-
+        dset_sheet(dset, ws, cell_formats)
 
     stream = BytesIO()
     wb.save(stream)
@@ -114,7 +113,6 @@ def import_set(dset, in_stream, headers=True):
 
     dset.wipe()
 
-    raise NotImplementedError
     xls_book = openpyxl.reader.excel.load_workbook(BytesIO(in_stream))
     sheet = xls_book.get_active_sheet()
 
@@ -131,7 +129,6 @@ def import_set(dset, in_stream, headers=True):
 def import_book(dbook, in_stream, headers=True):
     """Returns databook from XLS stream."""
 
-    raise NotImplementedError
     dbook.wipe()
 
     xls_book = openpyxl.reader.excel.load_workbook(BytesIO(in_stream))
@@ -150,19 +147,18 @@ def import_book(dbook, in_stream, headers=True):
         dbook.add_sheet(data)
 
 
-def dset_sheet(dataset, ws, cell_formats, freeze_panes=True):
+def dset_sheet(dataset, ws, cell_formats):
     """Completes given worksheet from given Dataset."""
     _package = dataset._package(dicts=False, formats=True)
-
-    from pprint import pprint
-    pprint(_package)
     for i, sep in enumerate(dataset._separators):
         _offset = i
         _package.insert((sep[0] + _offset), (sep[1],))
+    if dataset.dropdowns:
+        for dropdown in dataset.dropdowns:
+            ws.data_validation(**dropdown)
 
     for i, row in enumerate(_package):
         for j, (col, format) in enumerate(row):
-
             cell_format = cell_formats.get(_format_dict_key(format))
             ws.write(i, j, unicode('%s' % col, errors='ignore'), cell_format)
 
