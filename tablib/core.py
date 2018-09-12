@@ -1375,9 +1375,5 @@ class HeadersNeeded(Exception):
 class UnsupportedFormat(NotImplementedError):
     "Format is not supported"
 
-
-class MissedXlsFilename(NotImplementedError):
-    'Filename for xls is missed'
-
-class ColumnDoesNotExist(NotImplementedError):
+class ColumnDoesNotExist(Exception):
     'Column does not exist'
