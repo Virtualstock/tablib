@@ -16,14 +16,6 @@ from tempfile import NamedTemporaryFile
 import xlsxwriter
 import tablib
 
-# TODO: fix these:
-Workbook = openpyxl.workbook.Workbook
-ExcelWriter = openpyxl.writer.excel.ExcelWriter
-get_column_letter = openpyxl.utils.get_column_letter
-
-from tablib.compat import unicode
-
-
 title = 'xlsx'
 extensions = ('xlsx',)
 
@@ -47,7 +39,6 @@ def export_set(dataset, freeze_panes=True):
     wb.close()
 
     stream = BytesIO()
-    print temp_file
     with open(temp_file, 'rb') as f:
         stream.write(f.read())
     return stream.getvalue()
