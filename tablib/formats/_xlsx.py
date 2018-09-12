@@ -16,6 +16,10 @@ from tempfile import NamedTemporaryFile
 import xlsxwriter
 import tablib
 
+Workbook = openpyxl.workbook.Workbook
+ExcelWriter = openpyxl.writer.excel.ExcelWriter
+get_column_letter = openpyxl.utils.get_column_letter
+
 title = 'xlsx'
 extensions = ('xlsx',)
 
