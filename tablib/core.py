@@ -618,7 +618,7 @@ class Dataset(object):
         :return: None
         """
         column_position = self._detect_column(column)
-        self._set_dropdown(1, column_position, len(self._package(dicts=False)),
+        self._set_dropdown(1, column_position, self.height,
                            column_position, {'validate': 'list', 'source': map(str, source)})
 
     def add_conditional_formatting(self, conditions, column=None):
@@ -632,7 +632,7 @@ class Dataset(object):
         for condition in conditions:
             cell_format = {'bg_color': condition.get('color', None)}
             value = '"{}"'.format(condition['value']) if isinstance(condition['value'], str) else condition['value']
-            self._set_conditional_format(1, column_position, len(self._package(dicts=False)) - 1,
+            self._set_conditional_format(1, column_position, self.height,
                                          column_position, {
                                              'type': 'cell',
                                              'criteria': condition['criteria'],
