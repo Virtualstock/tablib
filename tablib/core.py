@@ -530,11 +530,10 @@ class Dataset(object):
         :param column_name: column name, str
         :return: column index, int
         """
-        if column_name:
-            try:
-                return self.headers.index(column_name)
-            except ValueError:
-                raise ColumnDoesNotExist('Column {} does not exist'.format(column_name))
+        try:
+            return self.headers.index(column_name)
+        except ValueError:
+            raise ColumnDoesNotExist('Column {} does not exist'.format(column_name))
 
 
     def _set_format(self, col, row, *args, **kwargs):
