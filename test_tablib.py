@@ -10,7 +10,7 @@ import datetime
 
 import tablib
 from tablib.compat import markup, unicode, is_py3
-from tablib.core import Row
+from tablib.core import Row, Dataset
 
 
 class TablibTestCase(unittest.TestCase):
@@ -378,7 +378,6 @@ class TablibTestCase(unittest.TestCase):
         data.csv
         data.tsv
         data.xls
-        data.xlsx
         data.ods
         data.html
         data.latex
@@ -399,7 +398,6 @@ class TablibTestCase(unittest.TestCase):
         data.csv
         data.tsv
         data.xls
-        data.xlsx
         data.ods
         data.html
         data.latex
@@ -413,7 +411,6 @@ class TablibTestCase(unittest.TestCase):
         book.json
         book.yaml
         book.xls
-        book.xlsx
         book.ods
         book.html
 
@@ -960,6 +957,83 @@ class TablibTestCase(unittest.TestCase):
         """Test XLSX export with new line in content."""
         self.founders.append(('First\nSecond', 'Name', 42))
         self.founders.export('xlsx')
+
+
+class TestExtendedTablibXlsx(unittest.TestCase):
+    def setUp(self):
+        self.content = [['AA1', 'Company VS1', 'Kyiv', 'Accepted', 100],
+                        ['DD2', 'Company VS1', 'Lviv', 'Rejected', 250],
+                        ['AA2', 'Company BB2', 'Odesa', 'Rejected', 15],
+                        ['BB2', 'Company GV1', 'Lviv', 'N/A', 99],
+                        ['CC3', 'Company GV2', 'Lviv', 'Accepted', 101]]
+        self.headers = ['Name', 'Company', 'City', 'Status', 'Price']
+        self.city_dropdown_source = ['Lviv', 'Kyiv', 'Sambir', 'London']
+        self.status_dropdown_source = ['Accepted', 'Rejected', 'N/A']
+        self.data = Dataset(headers=self.headers, *self.content)
+
+    def test_format_header(self):
+        self.data.format_header(
+            bg_color='green',
+            font_color='yellow',
+            font='Times New Roman',
+            font_size=15,
+            bold=True,
+            aligment='center',
+            border=6
+        )
+        self.assertEqual(self.data._cell_formats[None, 0],
+                         {'bg_color': 'green', 'aligment': 'center', 'font_size': 15, 'bold': True, 'italic': False,
+                          'font_color': 'yellow', 'font': 'Times New Roman', 'border': 6})
+        self.assertIn({'bg_color': 'green', 'aligment': 'center', 'font_size': 15, 'bold': True, 'italic': False,
+                       'font_color': 'yellow', 'font': 'Times New Roman', 'border': 6}, self.data.formats)
+
+    def test_format_footer(self):
+        self.data.format_footer(bg_color='red',
+                                bold=True,
+                                border=6,
+                                columns={'Company': 'There are 3 companies',
+                                         'City': 'There are 4 cities',
+                                         'Price': 'Total: 1000'})
+        self.assertEqual(self.data.formats[0],
+                         {'bg_color': 'red', 'aligment': None, 'font_size': None, 'bold': True, 'italic': False,
+                          'font_color': None, 'font': None, 'border': 6}
+                         )
+
+    def test_format_column(self):
+        self.data.format_col(column='Name', bg_color='gray', aligment='center', border=1)
+        self.data.format_col(column='City', bg_color='blue', aligment='center', border=1)
+        self.assertEqual(self.data._cell_formats[0, None],
+                         {'bg_color': 'gray', 'aligment': 'center', 'font_size': None, 'bold': False, 'italic': False,
+                          'font_color': None, 'font': None, 'border': 1})
+        self.assertEqual(self.data._cell_formats[2, None],
+                         {'bg_color': 'blue', 'aligment': 'center', 'font_size': None, 'bold': False, 'italic': False,
+                          'font_color': None, 'font': None, 'border': 1})
+
+    def test_add_dropdown(self):
+        self.data.add_dropdown(column='City', source=self.city_dropdown_source)
+        self.data.add_dropdown(column='Status', source=self.status_dropdown_source)
+        expected_city_dropdown = {
+            'first_col': self.headers.index('City'),
+            'last_row': len(self.content),
+            'first_row': 1,
+            'last_col': self.headers.index('City'),
+            'options': {
+                'source': self.city_dropdown_source,
+                'validate': 'list'
+            }
+        }
+        expected_status_dropdown = {
+            'first_col': self.headers.index('Status'),
+            'last_row': len(self.content),
+            'first_row': 1,
+            'last_col': self.headers.index('Status'),
+            'options': {
+                'source': self.status_dropdown_source,
+                'validate': 'list'
+            }
+        }
+        self.assertIn(expected_city_dropdown, self.data.dropdowns)
+        self.assertIn(expected_status_dropdown, self.data.dropdowns)
 
 
 if __name__ == '__main__':
