@@ -8,7 +8,6 @@
     :copyright: (c) 2016 by Kenneth Reitz.
     :license: MIT, see LICENSE for more details.
 """
-
 from copy import copy
 from operator import itemgetter
 
@@ -159,6 +158,11 @@ class Dataset(object):
     def __init__(self, *args, **kwargs):
         self._data = list(Row(arg) for arg in args)
         self.__headers = None
+        self._cell_formats = {}
+        self.__footer = None
+        self.__footer_format = None
+        self.dropdowns = []
+        self.conditional_formats = []
 
         # ('title', index) tuples
         self._separators = []
@@ -287,7 +291,7 @@ class Dataset(object):
             return False
 
 
-    def _package(self, dicts=True, ordered=True):
+    def _package(self, dicts=True, ordered=True, formats=False):
         """Packages Dataset into lists of dictionaries for transmission."""
         # TODO: Dicts default to false?
 
@@ -311,7 +315,6 @@ class Dataset(object):
                     except IndexError:
                         raise InvalidDatasetIndex
 
-
         if self.headers:
             if dicts:
                 data = [dict_pack(list(zip(self.headers, data_row))) for data_row in _data]
@@ -320,9 +323,32 @@ class Dataset(object):
         else:
             data = [list(row) for row in _data]
 
+        footer = self.__footer
+        if footer:
+            if not dicts:
+                footer = [footer.get(key, '') for key in self.headers]
+            data = data + [footer]
+
+        if formats:
+            for row_i, row in enumerate(data):
+                for col_i, datum in enumerate(row):
+                    data[row_i][col_i] = (
+                        datum,
+                        self._get_cell_format(row_i, col_i))
         return data
 
-
+    def _get_cell_format(self, row, column):
+        if row and row >= self.height + 1:
+            return self.__footer_format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_row == row and format_column == column:
+                return format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_column is None and format_row == row:
+                return format
+        for (format_column, format_row), format in self._cell_formats.items():
+            if format_row is None and format_column == column:
+                return format
 
     def _get_headers(self):
         """An *optional* list of strings to be used for header rows and attribute names.
@@ -434,6 +460,10 @@ class Dataset(object):
             except TypeError:
                 return 0
 
+    @property
+    def formats(self):
+        footer_formats = filter(bool, [self.__footer_format])
+        return self._cell_formats.values() + footer_formats
 
     def load(self, in_stream, format=None, **kwargs):
         """
@@ -452,6 +482,163 @@ class Dataset(object):
         import_set(self, in_stream, **kwargs)
         return self
 
+    def _make_format(self, bg_color, font, font_size, font_color, border, bold, italic, aligment):
+        """
+        Creating format for the cell
+        :param bg_color: cell backgroud color, str
+        :param font: font name, str
+        :param font_size: font size, int
+        :param font_color: fonr color, str
+        :param border: border index, int
+        :param bold: bool
+        :param italic: bool
+        :param aligment: text position in the cell, str
+        :return: dict
+        """
+        return {
+            'bg_color': bg_color,
+            'font': font,
+            'font_size': font_size,
+            'font_color': font_color,
+            'border': border,
+            'bold': bold,
+            'italic': italic,
+            'aligment': aligment,
+        }
+
+    def _make_validation(self, first_row, first_col, last_row, last_col, options):
+        """
+        Creating validation for data_validation and condition_format methods
+        :param first_row: int
+        :param first_col: int
+        :param last_row: int
+        :param last_col: int
+        :param options: dict
+        :return: dict
+        """
+        return {
+            'first_row': first_row,
+            'first_col': first_col,
+            'last_row': last_row,
+            'last_col': last_col,
+            'options': options
+        }
+
+    def _detect_column(self, column_name):
+        """
+        Detect column index
+        :param column_name: column name, str
+        :return: column index, int
+        """
+        try:
+            return self.headers.index(column_name)
+        except ValueError:
+            raise ColumnDoesNotExist('Column {} does not exist'.format(column_name))
+
+
+    def _set_format(self, col, row, *args, **kwargs):
+        """
+        Set cell format
+        :param col: column index, int
+        :param row: row index, int
+        :return: None
+        """
+        self._cell_formats[col, row] = self._make_format(*args, **kwargs)
+
+    def _set_dropdown(self, *args, **kwargs):
+        """
+         Set dropdown
+        :return: None
+        """
+        self.dropdowns.append(self._make_validation(*args, **kwargs))
+
+    def _set_conditional_format(self, *args, **kwargs):
+        """
+        set conditions for the conditional format
+        :return: None
+        """
+        self.conditional_formats.append(self._make_validation(*args, **kwargs))
+
+    def format_col(self, column, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        """
+        Applying format to the cell
+        :param bg_color: cell backgroud color, str
+        :param font: font name, str
+        :param font_size: font size, int
+        :param font_color: fonr color, str
+        :param border: border index, int
+        :param bold: bool
+        :param italic: bool
+        :param aligment: text position in the cell, str
+        :return: None
+        """
+        column_position = self._detect_column(column)
+        self._set_format(column_position, None, bg_color, font, font_size, font_color, border, bold, italic, aligment)
+
+    def format_header(self, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        """
+         Applying format to the header
+         :param bg_color: cell backgroud color, str
+         :param font: font name, str
+         :param font_size: font size, int
+         :param font_color: fonr color, str
+         :param border: border index, int
+         :param bold: bool
+         :param italic: bool
+         :param aligment: text position in the cell, str
+         :return: None
+         """
+        self._set_format(None, 0, bg_color, font, font_size, font_color, border, bold, italic, aligment)
+
+    def format_footer(self, columns, bg_color=None, font=None, font_size=None, font_color=None, border=None, bold=False,
+                   italic=False, aligment=None):
+        """
+         Applying format to the footer
+         :param bg_color: cell backgroud color, str
+         :param font: font name, str
+         :param font_size: font size, int
+         :param font_color: fonr color, str
+         :param border: border index, int
+         :param bold: bool
+         :param italic: bool
+         :param aligment: text position in the cell, str
+         :return: None
+         """
+        self.__footer = columns
+        self.__footer_format = self._make_format(bg_color, font, font_size, font_color, border, bold, italic, aligment)
+
+
+    def add_dropdown(self, column, source):
+        """
+        Add dropdown to the cell
+        :param column: column name, str
+        :param source: choices for dropdown, list
+        :return: None
+        """
+        column_position = self._detect_column(column)
+        self._set_dropdown(1, column_position, self.height,
+                           column_position, {'validate': 'list', 'source': map(str, source)})
+
+    def add_conditional_formatting(self, conditions, column=None):
+        """
+        Add conditional format to the cell
+        :param conditions: conditions, list of the dicts
+        :param column: column name, str
+        :return: None
+        """
+        column_position = self._detect_column(column)
+        for condition in conditions:
+            cell_format = {'bg_color': condition.get('color', None)}
+            value = '"{}"'.format(condition['value']) if isinstance(condition['value'], str) else condition['value']
+            self._set_conditional_format(1, column_position, self.height,
+                                         column_position, {
+                                             'type': 'cell',
+                                             'criteria': condition['criteria'],
+                                             'value': value,
+                                             'format': cell_format
+                                         })
 
 
     def export(self, format, **kwargs):
@@ -1186,3 +1373,6 @@ class HeadersNeeded(Exception):
 
 class UnsupportedFormat(NotImplementedError):
     "Format is not supported"
+
+class ColumnDoesNotExist(Exception):
+    'Column does not exist'
