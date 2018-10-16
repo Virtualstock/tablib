@@ -3,14 +3,17 @@
 """Tests for Tablib."""
 
 import json
+import os
 import unittest
 import sys
+import tempfile
 
 import datetime
 
 import tablib
 from tablib.compat import markup, unicode, is_py3
 from tablib.core import Row, Dataset
+import xlrd
 
 
 class TablibTestCase(unittest.TestCase):
@@ -970,6 +973,7 @@ class TestExtendedTablibXlsx(unittest.TestCase):
         self.city_dropdown_source = ['Lviv', 'Kyiv', 'Sambir', 'London']
         self.status_dropdown_source = ['Accepted', 'Rejected', 'N/A']
         self.data = Dataset(headers=self.headers, *self.content)
+        fd, self.xlsx_path = tempfile.mkstemp(suffix='.xlsx')
 
     def test_format_header(self):
         self.data.format_header(
@@ -1034,6 +1038,99 @@ class TestExtendedTablibXlsx(unittest.TestCase):
         }
         self.assertIn(expected_city_dropdown, self.data.dropdowns)
         self.assertIn(expected_status_dropdown, self.data.dropdowns)
+
+    def test_conditional_formatting(self):
+        self.data.add_conditional_formatting(column='Status', conditions=[
+            dict(
+                value='Accepted',
+                criteria='equal to',
+                color='green',
+            ),
+            dict(
+                value='Rejected',
+                criteria='equal to',
+                color='red',
+            ),
+            dict(
+                value='N/A',
+                criteria='equal to',
+                color='gray',
+            ),
+        ])
+
+        self.data.add_conditional_formatting(column='Price', conditions=[
+            dict(
+                value=100,
+                criteria='greater than or equal to',
+                color='green',
+            ),
+            dict(
+                value=100,
+                criteria='less than',
+                color='red',
+            ),
+        ])
+
+        self.assertEqual(self.data.conditional_formats[0]['options']['value'], '"Accepted"')
+        self.assertEqual(self.data.conditional_formats[0]['options']['criteria'], 'equal to')
+        self.assertEqual(self.data.conditional_formats[0]['options']['format']['bg_color'], 'green')
+
+        self.assertEqual(self.data.conditional_formats[1]['options']['value'], '"Rejected"')
+        self.assertEqual(self.data.conditional_formats[1]['options']['criteria'], 'equal to')
+        self.assertEqual(self.data.conditional_formats[1]['options']['format']['bg_color'], 'red')
+
+        self.assertEqual(self.data.conditional_formats[2]['options']['value'], '"N/A"')
+        self.assertEqual(self.data.conditional_formats[2]['options']['criteria'], 'equal to')
+        self.assertEqual(self.data.conditional_formats[2]['options']['format']['bg_color'], 'gray')
+
+        self.assertEqual(self.data.conditional_formats[3]['options']['value'], 100)
+        self.assertEqual(self.data.conditional_formats[3]['options']['criteria'], 'greater than or equal to')
+        self.assertEqual(self.data.conditional_formats[3]['options']['format']['bg_color'], 'green')
+
+        self.assertEqual(self.data.conditional_formats[4]['options']['value'], 100)
+        self.assertEqual(self.data.conditional_formats[4]['options']['criteria'], 'less than')
+        self.assertEqual(self.data.conditional_formats[4]['options']['format']['bg_color'], 'red')
+
+    def test_generated_xslx_file(self):
+        self.data.format_header(bg_color='green', font_color='yellow', font='Times New Roman', font_size=15, bold=True,
+                   aligment='center', border=6)
+        self.data.format_col(column='Name', bg_color='gray', aligment='center', border=1)
+        self.data.format_footer(bg_color='red',
+                                bold=True,
+                                border=6,
+                                columns={'Company': 'There are 3 companies',
+                                         'City': 'There are 4 cities',
+                                         'Price': 'Total: 1000'})
+        self.data.add_dropdown(column='City', source=self.city_dropdown_source)
+        self.data.add_conditional_formatting(column='Price', conditions=[
+            dict(
+                value=100,
+                criteria='greater than or equal to',
+                color='green',
+            ),
+            dict(
+                value=100,
+                criteria='less than',
+                color='red',
+            ),
+        ])
+        with open(self.xlsx_path, 'wb') as f:
+            f.write(self.data.export('xlsx'))
+
+        wb = xlrd.open_workbook(self.xlsx_path)
+        sheet = wb.sheet_by_index(0)
+        headers = [cell.value for cell in sheet.row(0)]
+        footer = [cell.value for cell in sheet.row(len(self.content)+1)]
+        self.assertEqual(self.headers, headers)
+        self.assertEqual(footer[self.headers.index('Company')], 'There are 3 companies')
+        self.assertEqual(footer[self.headers.index('City')], 'There are 4 cities')
+        self.assertEqual(footer[self.headers.index('Price')], 'Total: 1000')
+        for position, row in enumerate(self.content, 1):
+            self.assertEqual(row, [cell.value for cell in sheet.row(position)])
+
+    def tearDown(self):
+        if os.path.exists(self.xlsx_path):
+            os.remove(self.xlsx_path)
 
 
 if __name__ == '__main__':
